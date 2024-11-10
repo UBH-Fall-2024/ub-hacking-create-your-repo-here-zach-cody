@@ -1,51 +1,55 @@
 import cv2
-import mediapipe as mp
-import os
+import numpy as np
 
-# Suppress TensorFlow warnings
-os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
-
-# Initialize MediaPipe hands solution
-mp_hands = mp.solutions.hands
-hands = mp_hands.Hands(min_detection_confidence=0.7, min_tracking_confidence=0.7)
-mp_drawing = mp.solutions.drawing_utils
-
-# Initialize camera (0 for default camera)
+# Initialize the camera
 cap = cv2.VideoCapture(0)
 
-if not cap.isOpened():
-    print("Error: Could not access the camera.")
-    exit()
+# Set camera resolution (optional but may improve detection)
+cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
+cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
+
+# Define a broader HSV range for neon pink color
+lower_pink = np.array([130, 100, 100], dtype=np.uint8)
+upper_pink = np.array([170, 255, 255], dtype=np.uint8)
 
 while cap.isOpened():
-    # Capture frame-by-frame
-    success, frame = cap.read()
-    if not success:
-        print("Failed to grab frame.")
+    ret, frame = cap.read()
+    if not ret:
         break
 
-    # Flip the frame horizontally for a more intuitive mirror view
-    frame = cv2.flip(frame, 1)
+    # Convert the frame to HSV color space
+    hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
 
-    # Convert the frame to RGB (MediaPipe requires RGB format)
-    frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+    # Create a mask for neon pink based on the defined HSV range
+    pink_mask = cv2.inRange(hsv, lower_pink, upper_pink)
 
-    # Process the frame and detect hands
-    result = hands.process(frame_rgb)
+    # Apply morphological operations to close gaps and remove small noise
+    kernel = np.ones((3, 3), np.uint8)  # Smaller kernel size
+    pink_mask = cv2.morphologyEx(pink_mask, cv2.MORPH_CLOSE, kernel)
+    pink_mask = cv2.morphologyEx(pink_mask, cv2.MORPH_OPEN, kernel)
 
-    # If hands are detected, draw landmarks on them
-    if result.multi_hand_landmarks:
-        for hand_landmarks in result.multi_hand_landmarks:
-            # Draw landmarks and connections
-            mp_drawing.draw_landmarks(frame, hand_landmarks, mp_hands.HAND_CONNECTIONS)
+    # Find contours in the pink mask
+    contours, _ = cv2.findContours(pink_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
-    # Display the frame with landmarks overlaid
-    cv2.imshow('Hand Tracking', frame)
+    # Track the biggest contour (the stick)
+    for contour in contours:
+        if cv2.contourArea(contour) > 1000:  # Lowered threshold
+            # Get the bounding box for the contour
+            x, y, w, h = cv2.boundingRect(contour)
 
-    # Exit if 'q' is pressed
+            # Draw the bounding box around the detected stick
+            cv2.rectangle(frame, (x, y), (x + w, y + h), (0, 255, 0), 2)
+
+            # Add label "Stick" to the bounding box
+            cv2.putText(frame, "Stick", (x, y - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
+
+    # Show the result with the detected neon pink stick
+    cv2.imshow('Neon Pink Stick Tracking', frame)
+
+    # Exit the loop when 'q' is pressed
     if cv2.waitKey(1) & 0xFF == ord('q'):
         break
 
-# Release the video capture object and close OpenCV windows
+# Release the camera and close all windows
 cap.release()
 cv2.destroyAllWindows()
