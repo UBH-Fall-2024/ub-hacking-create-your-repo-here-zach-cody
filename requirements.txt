@@ -2,4 +2,4 @@ opencv-python
 mediapipe
 pygame
 numpy
-tkinter
+pillow
